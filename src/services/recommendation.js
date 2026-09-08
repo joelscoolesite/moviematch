@@ -104,3 +104,36 @@ export function topGenreIds(preferences, count = 3) {
     .slice(0, count)
     .map(([id]) => Number(id))
 }
+
+// --- "Waarom deze film?" -----------------------------------------------
+
+// Geeft een korte, mensvriendelijke uitleg voor waarom een film hoog scoort
+// in het profiel van de gebruiker. Puur afgeleid van dezelfde preferences
+// die ook de score bepalen — geen aparte "AI-uitleg", dus altijd consistent
+// met het echte algoritme. Retourneert null als er geen duidelijke reden is
+// (bv. bij een pure "ontdekking"-kaart).
+export function explainRecommendation(movie, preferences, genreNames = {}) {
+  const prefs = preferences || { genres: {}, directors: {}, actors: {} }
+  const reasons = []
+
+  for (const genre of movie.genres || []) {
+    const score = prefs.genres?.[genre.id] || 0
+    if (score > 0) reasons.push({ type: 'genre', label: genreNames[genre.id] || genre.name, score: score * WEIGHTS.genre })
+  }
+  for (const director of movie.directors || []) {
+    const score = prefs.directors?.[director.id] || 0
+    if (score > 0) reasons.push({ type: 'director', label: director.name, score: score * WEIGHTS.director })
+  }
+  for (const actor of movie.cast || []) {
+    const score = prefs.actors?.[actor.id] || 0
+    if (score > 0) reasons.push({ type: 'actor', label: actor.name, score: score * WEIGHTS.actor })
+  }
+
+  if (reasons.length === 0) return null
+  reasons.sort((a, b) => b.score - a.score)
+  const top = reasons[0]
+
+  if (top.type === 'genre') return `Omdat je van ${top.label} houdt`
+  if (top.type === 'director') return `Van regisseur ${top.label}, die je eerder leuk vond`
+  return `Met ${top.label}, een acteur die je eerder leuk vond`
+}

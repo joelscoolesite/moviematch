@@ -88,9 +88,12 @@ export default function Rooms() {
       {rooms === null ? (
         <Loader label="Rooms laden…" />
       ) : rooms.length === 0 ? (
-        <p className="mt-6 text-center text-sm text-reel-400">
-          Nog geen rooms. Maak er één aan of join met een code van een vriend.
-        </p>
+        <div className="mt-10 flex flex-col items-center text-center">
+          <span className="mb-3 text-4xl">🎬</span>
+          <p className="text-sm text-reel-400">
+            Nog geen rooms. Maak er één aan of join met een code van een vriend.
+          </p>
+        </div>
       ) : (
         <ul className="space-y-2">
           {rooms.map((room) => (

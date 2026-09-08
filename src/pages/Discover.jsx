@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { createCandidatePool } from '../services/candidatePool.js'
-import { pickNextCandidate } from '../services/recommendation.js'
-import { getSwipedMovieIds, recordSoloSwipe } from '../services/swipes.js'
+import { pickNextCandidate, explainRecommendation } from '../services/recommendation.js'
+import { getSwipedMovieIds, recordSoloSwipe, undoSoloSwipe } from '../services/swipes.js'
 import { addToWatchlist } from '../services/watchlist.js'
+import { GENRE_NAMES } from '../utils/genreNames.js'
 import SwipeDeck from '../components/SwipeDeck.jsx'
 import Loader from '../components/Loader.jsx'
 
@@ -27,9 +28,14 @@ async function pullCards(poolInstance, preferences, n, exclude = []) {
 export default function Discover() {
   const { user, profile, refreshProfile } = useAuth()
   const [deck, setDeck] = useState(null)
-  const [lastLiked, setLastLiked] = useState(null)
+  const [lastAction, setLastAction] = useState(null) // { movie, liked } | null
   const poolRef = useRef(null)
   const swipeCountRef = useRef(0)
+  const preferencesRef = useRef(profile?.preferences)
+
+  useEffect(() => {
+    preferencesRef.current = profile?.preferences
+  }, [profile?.preferences])
 
   useEffect(() => {
     let active = true
@@ -48,14 +54,14 @@ export default function Discover() {
 
   async function handleSwipe(movie, liked) {
     setDeck((q) => q.filter((m) => m.id !== movie.id))
-    setLastLiked(liked ? movie : null)
+    setLastAction({ movie, liked })
 
     await recordSoloSwipe(user.uid, movie, liked)
     swipeCountRef.current += 1
 
     // Ververs het voorkeursprofiel elke paar swipes zodat de kaartjes
     // binnen dezelfde sessie merkbaar meebewegen met nieuwe likes.
-    let preferences = profile?.preferences
+    let preferences = preferencesRef.current
     if (swipeCountRef.current % 3 === 0) {
       const fresh = await refreshProfile()
       if (fresh) preferences = fresh.preferences
@@ -65,6 +71,19 @@ export default function Discover() {
     const fresh = await pullCards(poolRef.current, preferences, 1, currentIds)
     if (fresh.length > 0) {
       setDeck((q) => [...q, ...fresh])
+    }
+  }
+
+  async function handleUndo() {
+    if (!lastAction) return
+    const { movie, liked } = lastAction
+    setLastAction(null)
+    setDeck((q) => [movie, ...q])
+    swipeCountRef.current = Math.max(0, swipeCountRef.current - 1)
+    try {
+      await undoSoloSwipe(user.uid, movie, liked)
+    } catch (e) {
+      console.error('Undo mislukt:', e)
     }
   }
 
@@ -83,6 +102,7 @@ export default function Discover() {
         <SwipeDeck
           queue={deck}
           onSwipe={handleSwipe}
+          getReason={(movie) => explainRecommendation(movie, profile?.preferences, GENRE_NAMES)}
           emptyState={
             <div className="text-center text-reel-300">
               <p className="mb-1 text-lg text-white">Even geen nieuwe films.</p>
@@ -92,7 +112,7 @@ export default function Discover() {
         />
       </div>
 
-      <div className="mx-auto mt-3 flex w-full max-w-sm items-center justify-center gap-8">
+      <div className="mx-auto mt-3 flex w-full max-w-sm items-center justify-center gap-6">
         <button
           onClick={() => deck[0] && handleSwipe(deck[0], false)}
           disabled={deck.length === 0}
@@ -101,17 +121,20 @@ export default function Discover() {
         >
           ✕
         </button>
-        {lastLiked && (
+
+        {lastAction ? (
           <button
-            onClick={() => {
-              addToWatchlist(user.uid, lastLiked)
-              setLastLiked(null)
-            }}
-            className="rounded-full border border-reel-600 bg-reel-800 px-4 py-2 text-xs text-reel-200"
+            onClick={handleUndo}
+            aria-label="Ongedaan maken"
+            className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-reel-500 bg-reel-800 text-lg text-reel-200 shadow-lg transition-transform active:scale-90"
+            title="Laatste swipe ongedaan maken"
           >
-            + Watchlist
+            ↺
           </button>
+        ) : (
+          <div className="h-11 w-11" />
         )}
+
         <button
           onClick={() => deck[0] && handleSwipe(deck[0], true)}
           disabled={deck.length === 0}
@@ -121,6 +144,20 @@ export default function Discover() {
           ♥
         </button>
       </div>
+
+      {lastAction?.liked && (
+        <div className="mx-auto mt-2 w-full max-w-sm text-center">
+          <button
+            onClick={() => {
+              addToWatchlist(user.uid, lastAction.movie)
+              setLastAction(null)
+            }}
+            className="rounded-full border border-reel-600 bg-reel-800 px-4 py-1.5 text-xs text-reel-200"
+          >
+            + Watchlist
+          </button>
+        </div>
+      )}
     </div>
   )
 }

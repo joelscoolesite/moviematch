@@ -3,7 +3,7 @@ import { IMG } from '../services/tmdb.js'
 
 const SWIPE_THRESHOLD = 120
 
-export default function MovieCard({ movie, onSwipe, isTop, stackIndex = 0 }) {
+export default function MovieCard({ movie, onSwipe, isTop, stackIndex = 0, reason }) {
   const x = useMotionValue(0)
   const rotate = useTransform(x, [-300, 300], [-18, 18])
   const likeOpacity = useTransform(x, [20, 140], [0, 1])
@@ -108,6 +108,12 @@ export default function MovieCard({ movie, onSwipe, isTop, stackIndex = 0 }) {
 
           {movie.overview && (
             <p className="line-clamp-3 text-sm leading-relaxed text-reel-200">{movie.overview}</p>
+          )}
+
+          {reason && (
+            <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-marquee">
+              <span aria-hidden>✨</span> {reason}
+            </p>
           )}
         </div>
       </div>

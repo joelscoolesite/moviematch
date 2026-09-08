@@ -51,7 +51,12 @@ service cloud.firestore {
     // rooms/{roomId}
     // ---------------------------------------------------------------
     match /rooms/{roomId} {
-      allow read: if isSignedIn() && request.auth.uid in resource.data.memberIds;
+      // Elke ingelogde gebruiker mag een room-document proberen te lezen.
+      // Dit is nodig om (a) te checken of een room-code al bestaat bij het
+      // aanmaken, en (b) een room te vinden om te joinen voordat je zelf al
+      // in memberIds staat. Gevoelige data (swipes, leden-details) staat in
+      // submappen die wél alleen voor leden toegankelijk zijn.
+      allow read: if isSignedIn();
 
       // Aanmaken: alleen als de maker zichzelf meteen als enige member zet.
       allow create: if isSignedIn() &&

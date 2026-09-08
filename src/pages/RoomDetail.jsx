@@ -6,15 +6,18 @@ import {
   listenToRoomMembers,
   listenToUserRoomProgress,
   listenToRoomSwipes,
-  recordRoomSwipe
+  recordRoomSwipe,
+  undoRoomSwipe
 } from '../services/rooms.js'
 import { getOrCacheMovies } from '../services/movieCache.js'
+import { explainRecommendation } from '../services/recommendation.js'
+import { GENRE_NAMES } from '../utils/genreNames.js'
 import SwipeDeck from '../components/SwipeDeck.jsx'
 import Loader from '../components/Loader.jsx'
 
 export default function RoomDetail() {
   const { roomId } = useParams()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const navigate = useNavigate()
 
   const [room, setRoom] = useState(undefined) // undefined = loading, null = niet gevonden
@@ -26,6 +29,7 @@ export default function RoomDetail() {
   // Lokale, optimistische set: direct bijgewerkt bij het swipen, zodat de
   // kaart meteen verdwijnt i.p.v. te wachten op de Firestore-round-trip.
   const [optimisticSwiped, setOptimisticSwiped] = useState({})
+  const [lastAction, setLastAction] = useState(null) // { movie, liked } | null
 
   useEffect(() => listenToRoom(roomId, setRoom), [roomId])
   useEffect(() => listenToRoomMembers(roomId, setMembers), [roomId])
@@ -51,20 +55,35 @@ export default function RoomDetail() {
 
   const matchCount = useMemo(() => roomSwipes.filter((s) => s.likeCount >= 2).length, [roomSwipes])
 
-
   async function handleSwipe(movie, liked) {
     setOptimisticSwiped((prev) => ({ ...prev, [String(movie.id)]: liked ? 'like' : 'dislike' }))
+    setLastAction({ movie, liked })
     try {
       await recordRoomSwipe(roomId, user.uid, movie, liked)
     } catch (e) {
       console.error('Swipe opslaan mislukt:', e)
-      // Rol de optimistische update terug zodat de film weer verschijnt
-      // en je het opnieuw kunt proberen.
       setOptimisticSwiped((prev) => {
         const next = { ...prev }
         delete next[String(movie.id)]
         return next
       })
+      setLastAction(null)
+    }
+  }
+
+  async function handleUndo() {
+    if (!lastAction) return
+    const { movie, liked } = lastAction
+    setLastAction(null)
+    setOptimisticSwiped((prev) => {
+      const next = { ...prev }
+      delete next[String(movie.id)]
+      return next
+    })
+    try {
+      await undoRoomSwipe(roomId, user.uid, movie, liked)
+    } catch (e) {
+      console.error('Undo mislukt:', e)
     }
   }
 
@@ -119,6 +138,7 @@ export default function RoomDetail() {
         <SwipeDeck
           queue={deck}
           onSwipe={handleSwipe}
+          getReason={(movie) => explainRecommendation(movie, profile?.preferences, GENRE_NAMES)}
           emptyState={
             <div className="text-center text-reel-300">
               <p className="mb-1 text-lg text-white">Je hebt alle films in deze room beoordeeld!</p>
@@ -131,7 +151,7 @@ export default function RoomDetail() {
       </div>
 
       {deck.length > 0 && (
-        <div className="mx-auto mt-3 flex w-full max-w-sm items-center justify-center gap-10">
+        <div className="mx-auto mt-3 flex w-full max-w-sm items-center justify-center gap-6">
           <button
             onClick={() => handleSwipe(deck[0], false)}
             aria-label="Skip"
@@ -139,6 +159,20 @@ export default function RoomDetail() {
           >
             ✕
           </button>
+
+          {lastAction ? (
+            <button
+              onClick={handleUndo}
+              aria-label="Ongedaan maken"
+              className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-reel-500 bg-reel-800 text-lg text-reel-200 shadow-lg transition-transform active:scale-90"
+              title="Laatste swipe ongedaan maken"
+            >
+              ↺
+            </button>
+          ) : (
+            <div className="h-11 w-11" />
+          )}
+
           <button
             onClick={() => handleSwipe(deck[0], true)}
             aria-label="Like"

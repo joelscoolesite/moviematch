@@ -1,4 +1,4 @@
-import { doc, setDoc, updateDoc, getDocs, collection, increment, serverTimestamp } from 'firebase/firestore'
+import { doc, setDoc, updateDoc, deleteDoc, getDocs, collection, increment, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase.js'
 import { buildPreferenceUpdate } from './recommendation.js'
 
@@ -27,3 +27,20 @@ export async function recordSoloSwipe(uid, movie, liked) {
     swipeCount: increment(1)
   })
 }
+
+// Maakt een solo-swipe ongedaan: verwijdert de swipe en trekt exact de
+// eerder toegepaste voorkeurs-aanpassing weer terug.
+export async function undoSoloSwipe(uid, movie, liked) {
+  const swipeRef = doc(db, 'users', uid, 'swipes', String(movie.id))
+  await deleteDoc(swipeRef)
+
+  // buildPreferenceUpdate(movie, !liked) levert precies het omgekeerde teken
+  // op van wat recordSoloSwipe(movie, liked) net had toegepast.
+  const revertUpdates = buildPreferenceUpdate(movie, !liked)
+  const userRef = doc(db, 'users', uid)
+  await updateDoc(userRef, {
+    ...revertUpdates,
+    swipeCount: increment(-1)
+  })
+}
+

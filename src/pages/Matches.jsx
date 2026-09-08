@@ -40,16 +40,20 @@ export default function Matches() {
 function RoomMatches({ room }) {
   const [swipes, setSwipes] = useState(null)
   const [members, setMembers] = useState([])
+  const [unanimousOnly, setUnanimousOnly] = useState(false)
 
   useEffect(() => listenToRoomSwipes(room.id, setSwipes), [room.id])
   useEffect(() => listenToRoomMembers(room.id, setMembers), [room.id])
 
+  const memberCount = room.memberIds?.length || members.length || 1
+
   const matches = useMemo(() => {
     if (!swipes) return []
-    return swipes.filter((s) => s.likeCount >= 2).sort((a, b) => b.likeCount - a.likeCount)
-  }, [swipes])
+    const base = swipes.filter((s) => s.likeCount >= 2)
+    const filtered = unanimousOnly ? base.filter((s) => s.likeCount >= memberCount) : base
+    return filtered.sort((a, b) => b.likeCount - a.likeCount)
+  }, [swipes, unanimousOnly, memberCount])
 
-  const memberCount = room.memberIds?.length || members.length || 1
   const nameOf = (uid) => members.find((m) => m.id === uid)?.displayName || 'Iemand'
 
   return (
@@ -59,10 +63,35 @@ function RoomMatches({ room }) {
         <span className="text-xs text-reel-400">{memberCount} leden</span>
       </div>
 
+      {memberCount > 2 && (
+        <div className="mb-3 flex rounded-full bg-reel-700/50 p-1 text-xs">
+          <button
+            onClick={() => setUnanimousOnly(false)}
+            className={`flex-1 rounded-full py-1.5 transition-colors ${
+              !unanimousOnly ? 'bg-marquee font-medium text-reel-950' : 'text-reel-300'
+            }`}
+          >
+            Alle matches
+          </button>
+          <button
+            onClick={() => setUnanimousOnly(true)}
+            className={`flex-1 rounded-full py-1.5 transition-colors ${
+              unanimousOnly ? 'bg-marquee font-medium text-reel-950' : 'text-reel-300'
+            }`}
+          >
+            Alleen unaniem
+          </button>
+        </div>
+      )}
+
       {swipes === null ? (
         <p className="text-sm text-reel-400">Matches laden…</p>
       ) : matches.length === 0 ? (
-        <p className="text-sm text-reel-400">Nog geen matches in deze room — blijf swipen!</p>
+        <p className="text-sm text-reel-400">
+          {unanimousOnly
+            ? 'Nog geen film waar iedereen het over eens is.'
+            : 'Nog geen matches in deze room — blijf swipen!'}
+        </p>
       ) : (
         <ul className="space-y-3">
           {matches.map((match) => {

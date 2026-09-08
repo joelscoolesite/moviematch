@@ -18,9 +18,12 @@ export default function Watchlist() {
       <p className="mb-5 text-sm text-reel-400">Films die je bewaard hebt om later te kijken.</p>
 
       {items.length === 0 ? (
-        <p className="mt-8 text-center text-sm text-reel-400">
-          Nog niks bewaard. Tik op &quot;+ Watchlist&quot; nadat je een film hebt geliket in Discover.
-        </p>
+        <div className="mt-10 flex flex-col items-center text-center">
+          <span className="mb-3 text-4xl">🍿</span>
+          <p className="text-sm text-reel-400">
+            Nog niks bewaard. Tik op &quot;+ Watchlist&quot; nadat je een film hebt geliket in Discover.
+          </p>
+        </div>
       ) : (
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {items.map((item) => (

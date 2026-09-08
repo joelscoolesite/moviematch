@@ -1,10 +1,33 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { collection, getDocs } from 'firebase/firestore'
+import { db } from '../firebase.js'
 import { useAuth } from '../contexts/AuthContext.jsx'
+import { GENRE_NAMES } from '../utils/genreNames.js'
 
 export default function Profile() {
   const { user, profile, logout } = useAuth()
+  const [swipeStats, setSwipeStats] = useState(null) // { liked, disliked }
 
   const topGenres = useMemo(() => topEntries(profile?.preferences?.genres), [profile])
+  const maxGenreScore = topGenres.length > 0 ? topGenres[0][1] : 1
+
+  useEffect(() => {
+    let active = true
+    async function loadStats() {
+      const snaps = await getDocs(collection(db, 'users', user.uid, 'swipes'))
+      let liked = 0
+      let disliked = 0
+      snaps.forEach((d) => (d.data().liked ? liked++ : disliked++))
+      if (active) setSwipeStats({ liked, disliked })
+    }
+    loadStats()
+    return () => {
+      active = false
+    }
+  }, [user.uid])
+
+  const total = (swipeStats?.liked || 0) + (swipeStats?.disliked || 0)
+  const likeRatio = total > 0 ? Math.round((swipeStats.liked / total) * 100) : null
 
   return (
     <div className="h-full overflow-y-auto px-5 pb-6 pt-6 safe-top">
@@ -24,20 +47,43 @@ export default function Profile() {
         </div>
       </div>
 
+      {total > 0 && (
+        <div className="mb-6 rounded-card border border-reel-700 bg-reel-800/60 p-4">
+          <p className="mb-2 text-sm font-medium text-reel-200">Jouw swipe-statistieken</p>
+          <div className="mb-2 flex h-3 overflow-hidden rounded-full bg-reel-700">
+            <div className="bg-like" style={{ width: `${likeRatio}%` }} />
+            <div className="bg-skip" style={{ width: `${100 - likeRatio}%` }} />
+          </div>
+          <div className="flex justify-between text-xs text-reel-400">
+            <span>♥ {swipeStats.liked} geliked ({likeRatio}%)</span>
+            <span>✕ {swipeStats.disliked} geskipt</span>
+          </div>
+        </div>
+      )}
+
       <div className="mb-6 rounded-card border border-reel-700 bg-reel-800/60 p-4">
-        <p className="mb-2 text-sm font-medium text-reel-200">Jouw smaakprofiel</p>
+        <p className="mb-3 text-sm font-medium text-reel-200">Jouw smaakprofiel</p>
         {topGenres.length === 0 ? (
           <p className="text-sm text-reel-400">Swipe wat meer films om je profiel te vormen.</p>
         ) : (
-          <div className="flex flex-wrap gap-2">
-            {topGenres.map(([label, score]) => (
-              <span key={label} className="rounded-full bg-reel-700 px-3 py-1 text-xs text-marquee">
-                {GENRE_NAMES[label] || `Genre ${label}`} · {score}
-              </span>
+          <div className="space-y-2">
+            {topGenres.map(([id, score]) => (
+              <div key={id}>
+                <div className="mb-1 flex items-center justify-between text-xs text-reel-200">
+                  <span>{GENRE_NAMES[id] || `Genre ${id}`}</span>
+                  <span className="text-reel-400">{score}</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-reel-700">
+                  <div
+                    className="h-full rounded-full bg-marquee"
+                    style={{ width: `${Math.max(6, (score / maxGenreScore) * 100)}%` }}
+                  />
+                </div>
+              </div>
             ))}
           </div>
         )}
-        <p className="mt-3 text-xs text-reel-400">{profile?.swipeCount || 0} films in totaal beoordeeld.</p>
+        <p className="mt-3 text-xs text-reel-400">{profile?.swipeCount || 0} films solo beoordeeld in Discover.</p>
       </div>
 
       <button
@@ -62,26 +108,4 @@ function topEntries(map, count = 6) {
     .filter(([, score]) => score > 0)
     .sort((a, b) => b[1] - a[1])
     .slice(0, count)
-}
-
-// Kleine, veelvoorkomende TMDB-genre-ids voor leesbare labels zonder extra call.
-const GENRE_NAMES = {
-  28: 'Actie',
-  12: 'Avontuur',
-  16: 'Animatie',
-  35: 'Komedie',
-  80: 'Misdaad',
-  99: 'Documentaire',
-  18: 'Drama',
-  10751: 'Familie',
-  14: 'Fantasy',
-  36: 'Historie',
-  27: 'Horror',
-  10402: 'Muziek',
-  9648: 'Mysterie',
-  10749: 'Romantiek',
-  878: 'Sciencefiction',
-  53: 'Thriller',
-  10752: 'Oorlog',
-  37: 'Western'
 }

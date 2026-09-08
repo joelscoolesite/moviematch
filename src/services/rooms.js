@@ -3,6 +3,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteField,
   onSnapshot,
   collection,
   query,
@@ -160,5 +161,37 @@ function minimalSnapshot(movie) {
     posterPath: movie.posterPath,
     year: movie.year || null,
     voteAverage: movie.voteAverage || null
+  }
+}
+
+// Maakt een room-swipe ongedaan: haalt de gebruiker uit likedBy/dislikedBy,
+// verwijdert zijn/haar entry uit de voortgang, en trekt de voorkeursupdate
+// terug. Laat de swipe-doc met movieSnapshot gewoon staan (die kan door
+// andere leden nog gebruikt worden voor de matchweergave).
+export async function undoRoomSwipe(roomId, uid, movie, liked) {
+  const movieId = String(movie.id)
+  const swipeRef = doc(db, 'rooms', roomId, 'swipes', movieId)
+  const userSwipeRef = doc(db, 'rooms', roomId, 'userSwipes', uid)
+
+  await runTransaction(db, async (tx) => {
+    const swipeSnap = await tx.get(swipeRef)
+    if (!swipeSnap.exists()) return
+    const current = swipeSnap.data()
+    const likedBy = (current.likedBy || []).filter((id) => id !== uid)
+    const dislikedBy = (current.dislikedBy || []).filter((id) => id !== uid)
+    tx.set(swipeRef, {
+      ...current,
+      likedBy,
+      dislikedBy,
+      likeCount: likedBy.length,
+      updatedAt: serverTimestamp()
+    })
+  })
+
+  await updateDoc(userSwipeRef, { [`swipes.${movieId}`]: deleteField() })
+
+  const revertUpdates = buildPreferenceUpdate(movie, !liked)
+  if (Object.keys(revertUpdates).length > 0) {
+    await updateDoc(doc(db, 'users', uid), revertUpdates)
   }
 }
