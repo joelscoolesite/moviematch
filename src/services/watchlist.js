@@ -21,3 +21,13 @@ export async function addToWatchlist(uid, movie) {
 export async function removeFromWatchlist(uid, movieId) {
   await deleteDoc(doc(db, 'users', uid, 'watchlist', String(movieId)))
 }
+
+// Handig gemakslaagje voor UI's die 1 knop hebben die toevoegt/verwijdert
+// afhankelijk van de huidige staat (bv. de ster-knop op een filmkaart).
+export async function toggleWatchlist(uid, movie, isSaved) {
+  if (isSaved) {
+    await removeFromWatchlist(uid, movie.id)
+  } else {
+    await addToWatchlist(uid, movie)
+  }
+}

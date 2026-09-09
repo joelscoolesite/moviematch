@@ -1,8 +1,10 @@
 import {
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   deleteField,
   onSnapshot,
   collection,
@@ -11,6 +13,7 @@ import {
   orderBy,
   runTransaction,
   arrayUnion,
+  arrayRemove,
   serverTimestamp
 } from 'firebase/firestore'
 import { db } from '../firebase.js'
@@ -194,4 +197,22 @@ export async function undoRoomSwipe(roomId, uid, movie, liked) {
   if (Object.keys(revertUpdates).length > 0) {
     await updateDoc(doc(db, 'users', uid), revertUpdates)
   }
+}
+
+// Verwijdert een room volledig (subcollecties eerst, dan het room-document
+// zelf). Mag alleen door de maker — zie firestore.rules (isRoomCreator).
+export async function deleteRoom(roomId) {
+  const subcollections = ['members', 'swipes', 'userSwipes']
+  for (const sub of subcollections) {
+    const snaps = await getDocs(collection(db, 'rooms', roomId, sub))
+    await Promise.all(snaps.docs.map((d) => deleteDoc(d.ref)))
+  }
+  await deleteDoc(doc(db, 'rooms', roomId))
+}
+
+// Laat een niet-eigenaar de room verlaten zonder 'm voor anderen te
+// verwijderen.
+export async function leaveRoom(roomId, uid) {
+  await updateDoc(doc(db, 'rooms', roomId), { memberIds: arrayRemove(uid) })
+  await deleteDoc(doc(db, 'rooms', roomId, 'members', uid))
 }

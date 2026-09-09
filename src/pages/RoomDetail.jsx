@@ -11,9 +11,11 @@ import {
 } from '../services/rooms.js'
 import { getOrCacheMovies } from '../services/movieCache.js'
 import { explainRecommendation } from '../services/recommendation.js'
+import { listenToWatchlist, addToWatchlist, removeFromWatchlist } from '../services/watchlist.js'
 import { GENRE_NAMES } from '../utils/genreNames.js'
 import SwipeDeck from '../components/SwipeDeck.jsx'
 import Loader from '../components/Loader.jsx'
+import MovieDetailModal from '../components/MovieDetailModal.jsx'
 
 export default function RoomDetail() {
   const { roomId } = useParams()
@@ -26,6 +28,8 @@ export default function RoomDetail() {
   const [roomSwipes, setRoomSwipes] = useState([])
   const [movies, setMovies] = useState(null)
   const [copied, setCopied] = useState(false)
+  const [watchlistIds, setWatchlistIds] = useState(new Set())
+  const [detailsMovie, setDetailsMovie] = useState(null)
   // Lokale, optimistische set: direct bijgewerkt bij het swipen, zodat de
   // kaart meteen verdwijnt i.p.v. te wachten op de Firestore-round-trip.
   const [optimisticSwiped, setOptimisticSwiped] = useState({})
@@ -35,6 +39,13 @@ export default function RoomDetail() {
   useEffect(() => listenToRoomMembers(roomId, setMembers), [roomId])
   useEffect(() => listenToUserRoomProgress(roomId, user.uid, setMySwipes), [roomId, user.uid])
   useEffect(() => listenToRoomSwipes(roomId, setRoomSwipes), [roomId])
+  useEffect(
+    () =>
+      listenToWatchlist(user.uid, (items) => {
+        setWatchlistIds(new Set(items.map((item) => String(item.movieId))))
+      }),
+    [user.uid]
+  )
 
   useEffect(() => {
     if (!room?.movieIds) return
@@ -84,6 +95,29 @@ export default function RoomDetail() {
       await undoRoomSwipe(roomId, user.uid, movie, liked)
     } catch (e) {
       console.error('Undo mislukt:', e)
+    }
+  }
+
+  async function handleToggleWatchlist(movie) {
+    const id = String(movie.id)
+    const wasSaved = watchlistIds.has(id)
+    setWatchlistIds((prev) => {
+      const next = new Set(prev)
+      if (wasSaved) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    try {
+      if (wasSaved) await removeFromWatchlist(user.uid, movie.id)
+      else await addToWatchlist(user.uid, movie)
+    } catch (e) {
+      console.error('Watchlist bijwerken mislukt:', e)
+      setWatchlistIds((prev) => {
+        const next = new Set(prev)
+        if (wasSaved) next.add(id)
+        else next.delete(id)
+        return next
+      })
     }
   }
 
@@ -139,6 +173,9 @@ export default function RoomDetail() {
           queue={deck}
           onSwipe={handleSwipe}
           getReason={(movie) => explainRecommendation(movie, profile?.preferences, GENRE_NAMES)}
+          isSaved={(id) => watchlistIds.has(String(id))}
+          onToggleWatchlist={handleToggleWatchlist}
+          onOpenDetails={setDetailsMovie}
           emptyState={
             <div className="text-center text-reel-300">
               <p className="mb-1 text-lg text-white">Je hebt alle films in deze room beoordeeld!</p>
@@ -181,6 +218,15 @@ export default function RoomDetail() {
             ♥
           </button>
         </div>
+      )}
+
+      {detailsMovie && (
+        <MovieDetailModal
+          movie={detailsMovie}
+          onClose={() => setDetailsMovie(null)}
+          isSaved={watchlistIds.has(String(detailsMovie.id))}
+          onToggleWatchlist={handleToggleWatchlist}
+        />
       )}
     </div>
   )

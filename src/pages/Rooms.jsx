@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
-import { createRoom, joinRoom, listenToUserRooms } from '../services/rooms.js'
+import { createRoom, joinRoom, listenToUserRooms, deleteRoom, leaveRoom } from '../services/rooms.js'
 import Loader from '../components/Loader.jsx'
 
 export default function Rooms() {
@@ -11,6 +11,7 @@ export default function Rooms() {
   const [joinCode, setJoinCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [pendingRemoveId, setPendingRemoveId] = useState(null)
 
   useEffect(() => {
     const unsub = listenToUserRooms(user.uid, setRooms)
@@ -42,6 +43,22 @@ export default function Rooms() {
       setError(e.message || 'Kon niet joinen.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  // Maker verwijdert de hele room (voor iedereen); overige leden verlaten
+  // 'm alleen voor zichzelf. Twee-staps bevestiging in de rij zelf i.p.v.
+  // een blokkerende native confirm-dialoog.
+  async function handleRemoveRoom(room) {
+    const isCreator = room.createdBy === user.uid
+    setPendingRemoveId(null)
+    setError('')
+    try {
+      if (isCreator) await deleteRoom(room.id)
+      else await leaveRoom(room.id, user.uid)
+    } catch (e) {
+      console.error('Room verwijderen/verlaten mislukt:', e)
+      setError('Dat lukte niet. Probeer het opnieuw.')
     }
   }
 
@@ -96,22 +113,52 @@ export default function Rooms() {
         </div>
       ) : (
         <ul className="space-y-2">
-          {rooms.map((room) => (
-            <li key={room.id}>
-              <button
-                onClick={() => navigate(`/rooms/${room.id}`)}
-                className="flex w-full items-center justify-between rounded-card border border-reel-700 bg-reel-800/60 p-4 text-left transition-colors hover:bg-reel-700/60"
-              >
-                <div>
-                  <p className="font-medium text-white">{room.name}</p>
-                  <p className="text-xs text-reel-400">{room.memberIds?.length || 1} leden</p>
-                </div>
-                <span className="rounded-full bg-reel-700 px-3 py-1 text-xs tracking-widest text-marquee">
-                  {room.code}
-                </span>
-              </button>
-            </li>
-          ))}
+          {rooms.map((room) => {
+            const isCreator = room.createdBy === user.uid
+            const confirming = pendingRemoveId === room.id
+            return (
+              <li key={room.id} className="flex items-stretch gap-2">
+                <button
+                  onClick={() => navigate(`/rooms/${room.id}`)}
+                  className="flex flex-1 items-center justify-between rounded-card border border-reel-700 bg-reel-800/60 p-4 text-left transition-colors hover:bg-reel-700/60"
+                >
+                  <div>
+                    <p className="font-medium text-white">{room.name}</p>
+                    <p className="text-xs text-reel-400">{room.memberIds?.length || 1} leden</p>
+                  </div>
+                  <span className="rounded-full bg-reel-700 px-3 py-1 text-xs tracking-widest text-marquee">
+                    {room.code}
+                  </span>
+                </button>
+
+                {confirming ? (
+                  <div className="flex shrink-0 flex-col gap-1">
+                    <button
+                      onClick={() => handleRemoveRoom(room)}
+                      className="rounded-lg bg-skip px-2.5 py-1 text-[11px] font-medium text-white"
+                    >
+                      Zeker
+                    </button>
+                    <button
+                      onClick={() => setPendingRemoveId(null)}
+                      className="rounded-lg border border-reel-600 px-2.5 py-1 text-[11px] text-reel-300"
+                    >
+                      Nee
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setPendingRemoveId(room.id)}
+                    aria-label={isCreator ? 'Room verwijderen' : 'Room verlaten'}
+                    title={isCreator ? 'Room verwijderen' : 'Room verlaten'}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center self-center rounded-full border border-reel-700 bg-reel-800/60 text-reel-300 transition-colors hover:border-skip hover:text-skip"
+                  >
+                    {isCreator ? '🗑' : '↩'}
+                  </button>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

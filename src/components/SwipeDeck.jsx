@@ -3,7 +3,15 @@ import MovieCard from './MovieCard.jsx'
 
 const VISIBLE_STACK = 3
 
-export default function SwipeDeck({ queue, onSwipe, emptyState, getReason }) {
+export default function SwipeDeck({
+  queue,
+  onSwipe,
+  emptyState,
+  getReason,
+  isSaved,
+  onToggleWatchlist,
+  onOpenDetails
+}) {
   const visible = queue.slice(0, VISIBLE_STACK)
 
   if (visible.length === 0) {
@@ -20,6 +28,9 @@ export default function SwipeDeck({ queue, onSwipe, emptyState, getReason }) {
             isTop={i === 0}
             stackIndex={i}
             reason={i === 0 && getReason ? getReason(movie) : null}
+            isSaved={isSaved ? isSaved(movie.id) : false}
+            onToggleWatchlist={onToggleWatchlist}
+            onOpenDetails={onOpenDetails}
             onSwipe={(direction) => onSwipe(movie, direction === 'right')}
           />
         ))}

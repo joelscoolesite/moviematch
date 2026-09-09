@@ -3,7 +3,16 @@ import { IMG } from '../services/tmdb.js'
 
 const SWIPE_THRESHOLD = 120
 
-export default function MovieCard({ movie, onSwipe, isTop, stackIndex = 0, reason }) {
+export default function MovieCard({
+  movie,
+  onSwipe,
+  isTop,
+  stackIndex = 0,
+  reason,
+  isSaved = false,
+  onToggleWatchlist,
+  onOpenDetails
+}) {
   const x = useMotionValue(0)
   const rotate = useTransform(x, [-300, 300], [-18, 18])
   const likeOpacity = useTransform(x, [20, 140], [0, 1])
@@ -74,6 +83,44 @@ export default function MovieCard({ movie, onSwipe, isTop, stackIndex = 0, reaso
             >
               SKIP
             </motion.div>
+
+            {/* Watchlist + info-knoppen staan al op de kaart zelf, zodat je
+                niet eerst hoeft te liken om iets te bewaren of details te
+                zien — je kunt dit doen terwijl je de film nog bekijkt. */}
+            <div className="absolute right-3 top-3 flex flex-col gap-2">
+              {onOpenDetails && (
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onOpenDetails(movie)
+                  }}
+                  aria-label="Meer details"
+                  title="Meer details"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-black/45 text-base text-white backdrop-blur transition-transform active:scale-90"
+                >
+                  ⓘ
+                </button>
+              )}
+              {onToggleWatchlist && (
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggleWatchlist(movie)
+                  }}
+                  aria-label={isSaved ? 'Verwijder uit watchlist' : 'Toevoegen aan watchlist'}
+                  title={isSaved ? 'Verwijder uit watchlist' : 'Toevoegen aan watchlist'}
+                  className={`flex h-9 w-9 items-center justify-center rounded-full backdrop-blur transition-transform active:scale-90 ${
+                    isSaved ? 'bg-marquee text-reel-950' : 'bg-black/45 text-white'
+                  }`}
+                >
+                  {isSaved ? '★' : '☆'}
+                </button>
+              )}
+            </div>
           </>
         )}
 

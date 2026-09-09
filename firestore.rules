@@ -16,6 +16,11 @@ service cloud.firestore {
         request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomId)).data.memberIds;
     }
 
+    function isRoomCreator(roomId) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/rooms/$(roomId)).data.createdBy == request.auth.uid;
+    }
+
     // ---------------------------------------------------------------
     // users/{uid} — privéprofiel incl. voorkeuren. Alleen de eigenaar
     // mag lezen/schrijven. Andere gebruikers zien nooit elkaars
@@ -64,7 +69,8 @@ service cloud.firestore {
         request.resource.data.memberIds.size() == 1 &&
         request.resource.data.memberIds[0] == request.auth.uid;
 
-      // Updaten mag als je al lid bent (bv. naam wijzigen), of als de
+      // Updaten mag als je al lid bent (bv. naam wijzigen, of jezelf
+      // verwijderen uit memberIds om de room te verlaten), of als de
       // update precies bestaat uit het toevoegen van jezelf (joinen).
       allow update: if isSignedIn() && (
         request.auth.uid in resource.data.memberIds ||
@@ -75,25 +81,31 @@ service cloud.firestore {
         )
       );
 
-      allow delete: if false;
+      // Alleen de maker mag de hele room verwijderen (rooms zijn
+      // verwijderbaar vanuit de Rooms-pagina). Verwijder eerst de
+      // subcollecties (members/swipes/userSwipes), dan pas dit document —
+      // zie deleteRoom() in services/rooms.js.
+      allow delete: if isRoomCreator(roomId);
 
       match /members/{memberUid} {
         allow read: if isRoomMember(roomId);
         allow create: if isSignedIn() && request.auth.uid == memberUid;
         allow update: if isOwner(memberUid);
-        allow delete: if false;
+        // Jezelf verwijderen (room verlaten), of de maker die opruimt bij
+        // het verwijderen van de hele room.
+        allow delete: if isOwner(memberUid) || isRoomCreator(roomId);
       }
 
       match /swipes/{movieId} {
         allow read: if isRoomMember(roomId);
         allow create, update: if isRoomMember(roomId);
-        allow delete: if false;
+        allow delete: if isRoomCreator(roomId);
       }
 
       match /userSwipes/{memberUid} {
         allow read: if isRoomMember(roomId);
         allow create, update: if isOwner(memberUid) && isRoomMember(roomId);
-        allow delete: if false;
+        allow delete: if isOwner(memberUid) || isRoomCreator(roomId);
       }
     }
   }

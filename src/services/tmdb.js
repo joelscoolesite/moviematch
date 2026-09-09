@@ -58,6 +58,19 @@ export async function fetchMovieDetails(tmdbId) {
   return normalizeMovie(details, credits)
 }
 
+// Geeft per land aan waar je een film kunt streamen/huren/kopen
+// (JustWatch-data, gratis via TMDB). Geen taalparam nodig, deze data is
+// niet vertaald.
+export async function fetchWatchProviders(tmdbId) {
+  return tmdbFetch(`/movie/${tmdbId}/watch/providers`)
+}
+
+// Releasedata + type (o.a. bioscoop/theatrical) per land — gebruikt om in
+// te schatten of een film nog in de bioscoop draait.
+export async function fetchReleaseDates(tmdbId) {
+  return tmdbFetch(`/movie/${tmdbId}/release_dates`)
+}
+
 export function normalizeMovie(details, credits) {
   const director = (credits?.crew || []).find((c) => c.job === 'Director')
   const cast = (credits?.cast || []).slice(0, 5).map((c) => ({ id: c.id, name: c.name }))
