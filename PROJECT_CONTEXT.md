@@ -108,6 +108,15 @@ Puur regelgebaseerd, GEEN AI/ML:
    gesynchroniseerd, maar **bewerk voortaan de root-bestanden** — dat zijn
    de bestanden die `firebase deploy --only firestore:rules,firestore:indexes`
    daadwerkelijk gebruikt.
+8. **Er ontbrak een `vercel.json` met SPA-rewrite.** React Router doet
+   client-side routing, maar zonder rewrite-config zoekt Vercel bij een
+   directe request naar bv. `/discover` (harde refresh, bookmark,
+   gedeelde link) een echt bestand op dat pad — dat bestaat niet, dus
+   Vercel's eigen "404: NOT_FOUND"-pagina verschijnt (niet de app se
+   eigen UI). Klikken door de app heen ging altijd goed (dat is
+   client-side), alleen refresh/directe navigatie op een subroute brak.
+   Fix: `vercel.json` toegevoegd met een rewrite die alles behalve
+   `/assets/*` naar `/index.html` stuurt.
 
 ## Environment variables (`.env`, nooit committen)
 
@@ -133,9 +142,6 @@ verkrijgt (Firebase Console + TMDB developer account).
 - Firestore Security Rules staan in root-`firestore.rules` (zie gotcha 7) —
   bij elke wijziging daaraan: `firebase deploy --only firestore:rules` (of
   handmatig plakken in Firebase Console → Firestore → Rules → Publish).
-  **Let op:** de rules zijn zojuist aangepast (delete-rechten voor rooms) —
-  dit MOET nog gedeployed worden, anders werkt "room verwijderen/verlaten"
-  niet in productie (zie hieronder).
 
 ## Al gebouwde features (v1 + eerste uitbreiding)
 
@@ -178,12 +184,15 @@ code), realtime Matches per room, Watchlist, Profile.
    subcollecties op), overige leden kunnen 'm verlaten (`leaveRoom()`).
    Vereiste rules-wijziging: `rooms/{roomId}` en subcollecties hadden
    `allow delete: if false` — nu `if isRoomCreator(roomId)` (plus
-   `isOwner(memberUid)` voor zelf-verlaten). **Moet nog gedeployed
-   worden**, zie hierboven.
+   `isOwner(memberUid)` voor zelf-verlaten). **Live gedeployed**, werkt
+   in productie.
 5. QOL: toetsenbord-snelkoppelingen in Discover (←/→ swipen, W
    watchlist, U/Backspace ongedaan maken), sterscore op Watchlist-
    thumbnails, inline bevestiging i.p.v. blokkerende `confirm()` bij
    room verwijderen/verlaten.
+
+Status: alles hierboven staat live (gepusht naar `main`, Vercel
+gedeployed, Firestore rules/indexes gedeployed).
 
 ## Nog niet gebouwd / mogelijke volgende stappen
 
@@ -212,3 +221,7 @@ permanent tonen. Twee oorzaken, allebei gefixt:
    terug naar 1-500.
 Zie eventueel ook of `fetchGenreList`/andere TMDB-calls diezelfde
 Promise.all-kwetsbaarheid hebben als je daar later problemen mee krijgt.
+
+Losstaand hiervan (maar in dezelfde sessie ontdekt): `vercel.json` met
+de SPA-rewrite toegevoegd (zie gotcha 8) — een refresh op een subroute
+gaf daarvoor Vercel's eigen 404-pagina, geen appfout.
