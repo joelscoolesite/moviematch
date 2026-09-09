@@ -242,11 +242,38 @@ gedeployed, Firestore rules/indexes gedeployed).
    maar matchen nooit een specifiek genre-filter (geen migratie
    uitgevoerd, bewuste keuze i.v.m. schaal/kosten).
 
+Status: gepusht naar `main` en live (2026-09-09).
+
+## Bugfix: transactie-contentie bij snel swipen in een room
+
+Na het live zetten van de derde uitbreiding hierboven kwamen er in de
+browserconsole herhaalde Firestore-fouten voorbij tijdens het testen
+(`failed-precondition`, later ook `already-exists`), met losse "Swipe
+opslaan mislukt"-meldingen tot gevolg — een paar swipes telden dus niet
+mee en moesten opnieuw.
+
+**Oorzaak:** `recordRoomSwipe()`/`undoRoomSwipe()` (rooms.js) lezen én
+schrijven allebei hetzelfde gedeelde document
+`rooms/{roomId}/userSwipes/{uid}` binnen een Firestore-transactie. Snel
+achter elkaar swipen (bv. tijdens het testen van de nieuwe
+room-reacties, waarbij je snel door een room-deck heen swiped om bij
+matches te komen) start meerdere van deze transacties tegelijk, zonder
+op de vorige te wachten — ze gaan racen op datzelfde document. Firestore
+probeert dit zelf op te lossen door de transactie automatisch opnieuw
+te proberen, maar bij genoeg gelijktijdige aanroepen raakt dat
+retry-budget op, en dan ziet de gebruiker het als een mislukte swipe.
+
+**Fix:** een simpele per-(room, gebruiker) schrijf-queue
+(`enqueueRoomWrite()` in rooms.js) — elke aanroep van
+`recordRoomSwipe()`/`undoRoomSwipe()` voor dezelfde room+gebruiker wacht
+nu op de vorige voordat 'm start, dus er raakt nooit meer dan één
+transactie tegelijk dat document aan. Swipes van verschillende
+gebruikers (of in verschillende rooms) lopen nog gewoon parallel —
+alleen de zelf-contentie van snel-achter-elkaar-swipen is opgelost.
+
 Status: lokaal geïmplementeerd en met `vite build` geverifieerd
-(2026-09-09). **Nog niet gepusht/gedeployed** — de Firestore-rule voor
-`reactions` moet nog gedeployed worden
-(`firebase deploy --only firestore:rules`) voordat room-reacties in
-productie werken.
+(2026-09-09), nog niet gepusht — check `git log` / vraag het na voordat
+je hierop verder bouwt.
 
 ## Nog niet gebouwd / mogelijke volgende stappen
 

@@ -24,6 +24,29 @@ import { buildPreferenceUpdate } from './recommendation.js'
 
 const DECK_SIZE = 30
 
+// Serialiseert Firestore-schrijfacties per (room, gebruiker): recordRoomSwipe
+// en undoRoomSwipe lezen+schrijven allebei hetzelfde gedeelde
+// rooms/{roomId}/userSwipes/{uid}-document. Zonder deze queue kan snel
+// achter elkaar swipen (bv. tijdens het testen) meerdere Firestore-
+// transacties tegelijk op datzelfde document laten racen, wat leidde tot
+// "failed-precondition"/"already-exists"-fouten en losse mislukte swipes
+// (zie PROJECT_CONTEXT.md). Door elke aanroep pas te starten nadat de
+// vorige voor diezelfde room+gebruiker is afgerond, raakt er nooit meer
+// dan één transactie tegelijk dat document aan.
+const roomWriteQueues = new Map()
+
+function enqueueRoomWrite(roomId, uid, task) {
+  const key = `${roomId}:${uid}`
+  const tail = roomWriteQueues.get(key) || Promise.resolve()
+  const result = tail.then(task, task)
+  // De bewaarde queue-tail moet altijd resolven (nooit "rejected" blijven
+  // hangen), anders wacht alles wat daarna komt voor altijd — de
+  // aanroeper van enqueueRoomWrite krijgt gewoon `result` terug, mét een
+  // eventuele fout daarin.
+  roomWriteQueues.set(key, result.catch(() => {}))
+  return result
+}
+
 // Bouwt de gedeelde film-deck voor een nieuwe room: iedereen in de room
 // swiped exact dezelfde set films, zodat "samen matchen" betekenis heeft.
 async function buildRoomDeck() {
@@ -121,7 +144,7 @@ export async function recordRoomSwipe(roomId, uid, movie, liked) {
   const swipeRef = doc(db, 'rooms', roomId, 'swipes', movieId)
   const userSwipeRef = doc(db, 'rooms', roomId, 'userSwipes', uid)
 
-  await runTransaction(db, async (tx) => {
+  await enqueueRoomWrite(roomId, uid, () => runTransaction(db, async (tx) => {
     // Belangrijk: Firestore-transacties vereisen dat ALLE reads gebeuren
     // vóór ALLE writes. Vandaar eerst beide gets, dan pas beide sets.
     const swipeSnap = await tx.get(swipeRef)
@@ -147,7 +170,7 @@ export async function recordRoomSwipe(roomId, uid, movie, liked) {
     const swipes = userSwipeSnap.exists() ? userSwipeSnap.data().swipes || {} : {}
     swipes[movieId] = liked ? 'like' : 'dislike'
     tx.set(userSwipeRef, { swipes, updatedAt: serverTimestamp() }, { merge: true })
-  })
+  }))
 
   // Elke room-swipe telt ook mee voor het persoonlijke voorkeursprofiel,
   // zodat het aanbevelingssysteem overal van leert.
@@ -176,22 +199,24 @@ export async function undoRoomSwipe(roomId, uid, movie, liked) {
   const swipeRef = doc(db, 'rooms', roomId, 'swipes', movieId)
   const userSwipeRef = doc(db, 'rooms', roomId, 'userSwipes', uid)
 
-  await runTransaction(db, async (tx) => {
-    const swipeSnap = await tx.get(swipeRef)
-    if (!swipeSnap.exists()) return
-    const current = swipeSnap.data()
-    const likedBy = (current.likedBy || []).filter((id) => id !== uid)
-    const dislikedBy = (current.dislikedBy || []).filter((id) => id !== uid)
-    tx.set(swipeRef, {
-      ...current,
-      likedBy,
-      dislikedBy,
-      likeCount: likedBy.length,
-      updatedAt: serverTimestamp()
+  await enqueueRoomWrite(roomId, uid, async () => {
+    await runTransaction(db, async (tx) => {
+      const swipeSnap = await tx.get(swipeRef)
+      if (!swipeSnap.exists()) return
+      const current = swipeSnap.data()
+      const likedBy = (current.likedBy || []).filter((id) => id !== uid)
+      const dislikedBy = (current.dislikedBy || []).filter((id) => id !== uid)
+      tx.set(swipeRef, {
+        ...current,
+        likedBy,
+        dislikedBy,
+        likeCount: likedBy.length,
+        updatedAt: serverTimestamp()
+      })
     })
-  })
 
-  await updateDoc(userSwipeRef, { [`swipes.${movieId}`]: deleteField() })
+    await updateDoc(userSwipeRef, { [`swipes.${movieId}`]: deleteField() })
+  })
 
   const revertUpdates = buildPreferenceUpdate(movie, !liked)
   if (Object.keys(revertUpdates).length > 0) {
