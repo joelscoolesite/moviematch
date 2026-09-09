@@ -195,3 +195,20 @@ code), realtime Matches per room, Watchlist, Profile.
   (bv. `aiSearch.js`) toegevoegd kan worden. Niet gebruikt voor
   bioscoop-/streaminginfo, zie punt 3 van de tweede uitbreiding hierboven.
 - `profile.swipeCount` zou ook room-swipes moeten meetellen (zie gotcha 6).
+
+## Bugfix (na live-gebruik, 265+ swipes)
+
+Discover liep na veel swipes vast op "Even geen nieuwe films" en bleef dat
+permanent tonen. Twee oorzaken, allebei gefixt:
+1. `movieCache.getOrCacheMovies()` gebruikte `Promise.all()` over alle
+   ontbrekende ids — als TMDB voor 1 id een 404 gaf (film verwijderd van
+   TMDB), werd de HELE batch weggegooid, ook de films die wel prima
+   ophaalden. Nu `Promise.allSettled()`: een kapotte id wordt overgeslagen
+   (`console.warn`), de rest komt gewoon door.
+2. `candidatePool.js` verhoogde `popularPage`/`genrePage` bij elke refill,
+   zonder bovengrens. TMDB accepteert geen paginanummers boven de 500 —
+   zodra dat gebeurde faalde ELKE volgende refill permanent (de pagina
+   werd nooit meer lager). Fix: `wrapPage()` wrapt het paginanummer
+   terug naar 1-500.
+Zie eventueel ook of `fetchGenreList`/andere TMDB-calls diezelfde
+Promise.all-kwetsbaarheid hebben als je daar later problemen mee krijgt.

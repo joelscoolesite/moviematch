@@ -63,12 +63,26 @@ export async function getOrCacheMovies(tmdbIds) {
   }
 
   const stillMissing = ids.filter((id) => !result.has(id))
-  await Promise.all(
+  // Promise.allSettled i.p.v. Promise.all: als TMDB voor 1 id een fout geeft
+  // (bv. 404 omdat de film inmiddels van TMDB verwijderd is), mag dat niet
+  // de HELE batch laten mislukken — anders gaan ook alle films die wel
+  // prima ophaalden verloren. Dit veroorzaakte een bug waarbij Discover's
+  // kandidatenpool na verloop van tijd leeg bleef ("Even geen nieuwe
+  // films"), zodra er ergens 1 kapotte id tussen zat.
+  const settled = await Promise.allSettled(
     stillMissing.map(async (id) => {
       const fresh = await getOrCacheMovie(id)
-      result.set(id, fresh)
+      return [id, fresh]
     })
   )
+  for (const outcome of settled) {
+    if (outcome.status === 'fulfilled') {
+      const [id, fresh] = outcome.value
+      result.set(id, fresh)
+    } else {
+      console.warn('Kon filmdetails niet ophalen, sla over:', outcome.reason)
+    }
+  }
 
   return ids.map((id) => result.get(id)).filter(Boolean)
 }

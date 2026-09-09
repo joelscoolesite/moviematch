@@ -9,6 +9,15 @@ import { topGenreIds } from './recommendation.js'
 
 const REFILL_THRESHOLD = 5
 const PAGES_PER_REFILL = 2
+const MAX_TMDB_PAGE = 500 // TMDB accepteert geen paginanummers hoger dan dit
+
+// Voorkomt dat popularPage/genrePage na heel veel refills (lange sessie,
+// veel swipes) boven de 500 uitkomen — TMDB geeft daar een fout op, wat
+// zonder wrap een permanente dead-end zou zijn: elke mislukte refill
+// verhoogt de pagina alleen maar verder, dus hij herstelt zichzelf nooit.
+function wrapPage(page) {
+  return ((page - 1) % MAX_TMDB_PAGE) + 1
+}
 
 export function createCandidatePool({ preferences, excludeIds }) {
   let pool = []
@@ -21,9 +30,9 @@ export function createCandidatePool({ preferences, excludeIds }) {
     const requests = []
 
     for (let i = 0; i < PAGES_PER_REFILL; i++) {
-      requests.push(fetchPopular(popularPage + i))
+      requests.push(fetchPopular(wrapPage(popularPage + i)))
       if (genreIds.length > 0) {
-        requests.push(fetchDiscoverByGenres(genreIds, genrePage + i))
+        requests.push(fetchDiscoverByGenres(genreIds, wrapPage(genrePage + i)))
       }
     }
     popularPage += PAGES_PER_REFILL
