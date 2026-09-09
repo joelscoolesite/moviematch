@@ -216,3 +216,36 @@ export async function leaveRoom(roomId, uid) {
   await updateDoc(doc(db, 'rooms', roomId), { memberIds: arrayRemove(uid) })
   await deleteDoc(doc(db, 'rooms', roomId, 'members', uid))
 }
+
+// ---------------------------------------------------------------
+// Room-reacties: korte emoji-reactie en/of opmerking per film in een room
+// (getoond op de Matches-pagina). Eén document per film
+// (rooms/{roomId}/reactions/{movieId}) met een `byUser`-map — elk lid
+// raakt via een dot-path-sleutel (`byUser.<uid>`) alleen zijn eigen entry
+// aan, zelfde patroon als `userSwipes` hierboven.
+// ---------------------------------------------------------------
+export function listenToRoomReactions(roomId, callback) {
+  return onSnapshot(collection(db, 'rooms', roomId, 'reactions'), (snap) => {
+    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+  })
+}
+
+export async function setRoomReaction(roomId, movieId, uid, { emoji = null, comment = null } = {}) {
+  const ref = doc(db, 'rooms', roomId, 'reactions', String(movieId))
+  await setDoc(
+    ref,
+    {
+      [`byUser.${uid}`]: {
+        emoji: emoji || null,
+        comment: comment ? String(comment).slice(0, 140) : null,
+        updatedAt: serverTimestamp()
+      }
+    },
+    { merge: true }
+  )
+}
+
+export async function removeRoomReaction(roomId, movieId, uid) {
+  const ref = doc(db, 'rooms', roomId, 'reactions', String(movieId))
+  await updateDoc(ref, { [`byUser.${uid}`]: deleteField() })
+}

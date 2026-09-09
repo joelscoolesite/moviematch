@@ -194,9 +194,62 @@ code), realtime Matches per room, Watchlist, Profile.
 Status: alles hierboven staat live (gepusht naar `main`, Vercel
 gedeployed, Firestore rules/indexes gedeployed).
 
+## Derde uitbreiding (Discover-filters, room-reacties, watchlist sorteren/filteren)
+
+1. **Discover-filters** (`components/DiscoverFilters.jsx`, nieuw): genre
+   (multi-select chips), decennium (single-select chips,
+   `DECADE_OPTIONS`) en een schakelaar om 18+/16+-films uit te sluiten.
+   Filters staan standaard ingeklapt achter een "Filters"-knop met
+   badge, en blijven bewaard in `localStorage`
+   (`moviematch:discover-filters`) zodat ze een refresh overleven.
+   - `services/tmdb.js`: nieuwe `fetchDiscover()` (generieke
+     `/discover/movie`-call met optionele `genreIds`,
+     `releaseDateGte/Lte` en `excludeMatureContent`). Bij
+     `excludeMatureContent` wordt `certification_country=NL` +
+     `certification.lte=12` gebruikt (NL-classificatievolgorde: AL, 6,
+     9, 12, 16, 18 — "12" sluit dus 16 en 18 uit). **Let op:** niet elke
+     film heeft NL-classificatiedata in TMDB, dus dit filtert soms iets
+     te streng i.p.v. te weinig — een bewuste afweging, geen bug.
+   - `services/candidatePool.js`: `createCandidatePool()` accepteert nu
+     een `filters`-object. Bij een actieve genre-filter tonen we
+     UITSLUITEND films uit die genres (i.p.v. de gebruikelijke mix van
+     "populair" + "smaakprofiel") — dat is wat je van een expliciete
+     filter verwacht. Decennium/classificatie gelden voor beide takken.
+   - `pages/Discover.jsx`: bij het wijzigen van filters wordt de
+     kandidatenpool + deck opnieuw opgebouwd, maar de bestaande kaarten
+     blijven zichtbaar met een "Filters toepassen…"-overlay i.p.v. het
+     hele scherm te vervangen door een loader (zelfde soort UX-afweging
+     als gotcha 4 hieronder, al is dit geen swipe-actie).
+2. **Room-reacties**: korte emoji-reactie (❤️😂🍿👍👎😴) en/of een
+   opmerking (max 140 tekens) per film in een room, te zien/zetten op de
+   Matches-pagina onder elke match. Nieuwe Firestore-subcollectie
+   `rooms/{roomId}/reactions/{movieId}` met een `byUser`-map — elk lid
+   raakt via een dot-path-sleutel (`byUser.<uid>`) alleen zijn eigen
+   entry aan, zelfde patroon als `userSwipes` (zie
+   `services/rooms.js`: `listenToRoomReactions`/`setRoomReaction`/
+   `removeRoomReaction`). Firestore-rule toegevoegd:
+   `rooms/{roomId}/reactions/{movieId}`, zelfde vertrouwensmodel als
+   `swipes` (elk lid mag lezen/schrijven, alleen de maker mag
+   verwijderen).
+3. **Watchlist sorteren/filteren**: sorteren op toegevoegd-datum
+   (standaard), jaar (oud/nieuw) of score, plus filteren op genre. De
+   controls verschijnen pas zodra de watchlist groter is dan 20 films
+   (`SHOW_CONTROLS_THRESHOLD` in `pages/Watchlist.jsx`) — bij een
+   korte lijst voegen ze alleen ruis toe. Vereiste:
+   `services/watchlist.js` slaat nu ook `genreIds` op bij
+   `addToWatchlist()`. Films die vóór deze wijziging al bewaard waren
+   missen dit veld — ze blijven gewoon zichtbaar onder "Alle genres",
+   maar matchen nooit een specifiek genre-filter (geen migratie
+   uitgevoerd, bewuste keuze i.v.m. schaal/kosten).
+
+Status: lokaal geïmplementeerd en met `vite build` geverifieerd
+(2026-09-09). **Nog niet gepusht/gedeployed** — de Firestore-rule voor
+`reactions` moet nog gedeployed worden
+(`firebase deploy --only firestore:rules`) voordat room-reacties in
+productie werken.
+
 ## Nog niet gebouwd / mogelijke volgende stappen
 
-- Room-discussie/reacties per film
 - Export/deel je smaakprofiel
 - AI-gedreven filmzoekfunctie via Groq blijft een optie voor een
   natuurlijke-taal-zoekfunctie ("toon me iets als Inception maar

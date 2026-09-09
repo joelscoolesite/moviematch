@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { createCandidatePool } from '../services/candidatePool.js'
 import { pickNextCandidate, explainRecommendation } from '../services/recommendation.js'
@@ -8,6 +8,7 @@ import { GENRE_NAMES } from '../utils/genreNames.js'
 import SwipeDeck from '../components/SwipeDeck.jsx'
 import Loader from '../components/Loader.jsx'
 import MovieDetailModal from '../components/MovieDetailModal.jsx'
+import DiscoverFilters, { loadStoredFilters, saveStoredFilters } from '../components/DiscoverFilters.jsx'
 
 const DECK_BUFFER = 5
 
@@ -29,16 +30,24 @@ async function pullCards(poolInstance, preferences, n, exclude = []) {
 export default function Discover() {
   const { user, profile, refreshProfile } = useAuth()
   const [deck, setDeck] = useState(null)
+  const [refilling, setRefilling] = useState(false)
   const [lastAction, setLastAction] = useState(null) // { movie, liked } | null
   const [watchlistIds, setWatchlistIds] = useState(new Set())
   const [detailsMovie, setDetailsMovie] = useState(null)
+  const [filters, setFilters] = useState(loadStoredFilters)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const poolRef = useRef(null)
   const swipeCountRef = useRef(0)
   const preferencesRef = useRef(profile?.preferences)
+  const initializedRef = useRef(false)
 
   useEffect(() => {
     preferencesRef.current = profile?.preferences
   }, [profile?.preferences])
+
+  useEffect(() => {
+    saveStoredFilters(filters)
+  }, [filters])
 
   useEffect(
     () =>
@@ -48,20 +57,42 @@ export default function Discover() {
     [user.uid]
   )
 
+  const genreFilterKey = filters.genreIds.join(',')
+
   useEffect(() => {
     let active = true
     async function init() {
+      // Bij het wijzigen van filters ná de allereerste keer laden we de
+      // deck ook opnieuw, maar tonen we ondertussen de bestaande kaarten
+      // met een overlay i.p.v. het hele scherm te vervangen door een
+      // loader (voelt storend aan vlak nadat je een filter aanraakte).
+      if (initializedRef.current) setRefilling(true)
       const swipedIds = await getSwipedMovieIds(user.uid)
-      poolRef.current = createCandidatePool({ preferences: profile?.preferences, excludeIds: swipedIds })
-      const cards = await pullCards(poolRef.current, profile?.preferences, DECK_BUFFER)
-      if (active) setDeck(cards)
+      poolRef.current = createCandidatePool({
+        preferences: preferencesRef.current,
+        excludeIds: swipedIds,
+        filters
+      })
+      const cards = await pullCards(poolRef.current, preferencesRef.current, DECK_BUFFER)
+      if (!active) return
+      setDeck(cards)
+      setRefilling(false)
+      initializedRef.current = true
     }
     init()
     return () => {
       active = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.uid])
+  }, [user.uid, genreFilterKey, filters.releaseDateGte, filters.releaseDateLte, filters.excludeMatureContent])
+
+  const activeFilterCount = useMemo(
+    () =>
+      (filters.genreIds.length > 0 ? 1 : 0) +
+      (filters.decadeKey !== 'all' ? 1 : 0) +
+      (filters.excludeMatureContent ? 1 : 0),
+    [filters]
+  )
 
   async function handleSwipe(movie, liked) {
     setDeck((q) => q.filter((m) => m.id !== movie.id))
@@ -146,10 +177,29 @@ export default function Discover() {
     <div className="flex h-full flex-col px-4 pb-3 pt-4 safe-top">
       <header className="mb-3 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-white">Discover</h1>
-        <span className="text-xs text-reel-400">
-          {profile?.swipeCount || 0} films beoordeeld
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-reel-400">
+            {profile?.swipeCount || 0} films beoordeeld
+          </span>
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((v) => !v)}
+            aria-expanded={filtersOpen}
+            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+              filtersOpen ? 'border-marquee bg-marquee/20 text-marquee' : 'border-reel-600 bg-reel-800 text-reel-200'
+            }`}
+          >
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-marquee px-1 text-[10px] font-semibold text-reel-950">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+        </div>
       </header>
+
+      {filtersOpen && <DiscoverFilters filters={filters} onChange={setFilters} className="mb-3" />}
 
       <div className="relative mx-auto w-full max-w-sm flex-1">
         <SwipeDeck
@@ -162,10 +212,20 @@ export default function Discover() {
           emptyState={
             <div className="text-center text-reel-300">
               <p className="mb-1 text-lg text-white">Even geen nieuwe films.</p>
-              <p className="text-sm">Kom straks terug voor meer aanbevelingen.</p>
+              <p className="text-sm">
+                {activeFilterCount > 0
+                  ? 'Probeer je filters iets ruimer te zetten, of kom straks terug.'
+                  : 'Kom straks terug voor meer aanbevelingen.'}
+              </p>
             </div>
           }
         />
+
+        {refilling && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-card bg-reel-950/70 backdrop-blur-sm">
+            <p className="text-sm text-reel-200">Filters toepassen…</p>
+          </div>
+        )}
       </div>
 
       <div className="mx-auto mt-3 flex w-full max-w-sm items-center justify-center gap-6">

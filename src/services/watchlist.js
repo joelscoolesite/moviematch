@@ -14,6 +14,7 @@ export async function addToWatchlist(uid, movie) {
     posterPath: movie.posterPath,
     year: movie.year || null,
     voteAverage: movie.voteAverage || null,
+    genreIds: (movie.genres || []).map((g) => g.id),
     addedAt: serverTimestamp()
   })
 }

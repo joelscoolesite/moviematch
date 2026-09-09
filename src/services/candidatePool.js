@@ -3,7 +3,7 @@
 // dedupliceert, filtert al geswipede films eruit en houdt een voorraad aan
 // zodat we niet bij elke swipe een nieuwe TMDB-call hoeven te doen.
 
-import { fetchPopular, fetchDiscoverByGenres } from './tmdb.js'
+import { fetchDiscover } from './tmdb.js'
 import { getOrCacheMovies } from './movieCache.js'
 import { topGenreIds } from './recommendation.js'
 
@@ -19,20 +19,33 @@ function wrapPage(page) {
   return ((page - 1) % MAX_TMDB_PAGE) + 1
 }
 
-export function createCandidatePool({ preferences, excludeIds }) {
+export function createCandidatePool({ preferences, excludeIds, filters = {} }) {
   let pool = []
   let popularPage = 1
   let genrePage = 1
   const seen = new Set(excludeIds)
 
   async function refill() {
-    const genreIds = topGenreIds(preferences, 3)
+    // Bij een actieve genre-filter (Discover-filters) tonen we UITSLUITEND
+    // films uit de gekozen genres i.p.v. de gebruikelijke mix van
+    // "populair" + "smaakprofiel" — dat is wat je van een filter verwacht.
+    // Decennium- en classificatiefilters gelden voor beide takken.
+    const filterGenreIds = filters.genreIds || []
+    const useFilterGenres = filterGenreIds.length > 0
+    const genreIds = useFilterGenres ? filterGenreIds : topGenreIds(preferences, 3)
+    const sharedParams = {
+      releaseDateGte: filters.releaseDateGte,
+      releaseDateLte: filters.releaseDateLte,
+      excludeMatureContent: filters.excludeMatureContent
+    }
     const requests = []
 
     for (let i = 0; i < PAGES_PER_REFILL; i++) {
-      requests.push(fetchPopular(wrapPage(popularPage + i)))
+      if (!useFilterGenres) {
+        requests.push(fetchDiscover({ ...sharedParams, page: wrapPage(popularPage + i) }))
+      }
       if (genreIds.length > 0) {
-        requests.push(fetchDiscoverByGenres(genreIds, wrapPage(genrePage + i)))
+        requests.push(fetchDiscover({ ...sharedParams, genreIds, page: wrapPage(genrePage + i) }))
       }
     }
     popularPage += PAGES_PER_REFILL

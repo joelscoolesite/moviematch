@@ -107,6 +107,17 @@ service cloud.firestore {
         allow create, update: if isOwner(memberUid) && isRoomMember(roomId);
         allow delete: if isOwner(memberUid) || isRoomCreator(roomId);
       }
+
+      // Korte emoji-reactie/opmerking per film (services/rooms.js:
+      // setRoomReaction/removeRoomReaction). Zelfde vertrouwensmodel als
+      // swipes hierboven: elk lid mag het document lezen/schrijven, de
+      // client raakt via een dot-path alleen zijn eigen `byUser.<uid>`-
+      // entry aan.
+      match /reactions/{movieId} {
+        allow read: if isRoomMember(roomId);
+        allow create, update: if isRoomMember(roomId);
+        allow delete: if isRoomCreator(roomId);
+      }
     }
   }
 }

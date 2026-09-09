@@ -50,6 +50,37 @@ export async function fetchDiscoverByGenres(genreIds = [], page = 1) {
   return data.results
 }
 
+// Generieke discover-call t.b.v. de Discover-filters (genre/decennium/
+// leeftijdsclassificatie uitsluiten). Gebruikt door candidatePool.js zodra
+// er een filter actief staat. certification.lte volgt de volgorde die TMDB
+// voor het opgegeven land aanhoudt (NL: AL, 6, 9, 12, 16, 18) — "12" sluit
+// dus 16 en 18 uit. Let op: niet elke film heeft NL-classificatiedata in
+// TMDB, dus dit filtert soms iets te streng (films zonder classificatie
+// vallen weg) in plaats van te weinig — een bewuste afweging, zie
+// PROJECT_CONTEXT.md.
+export async function fetchDiscover({
+  genreIds = [],
+  page = 1,
+  releaseDateGte,
+  releaseDateLte,
+  excludeMatureContent
+} = {}) {
+  const params = {
+    sort_by: 'popularity.desc',
+    'vote_count.gte': 50,
+    page
+  }
+  if (genreIds.length > 0) params.with_genres = genreIds.join(',')
+  if (releaseDateGte) params['primary_release_date.gte'] = releaseDateGte
+  if (releaseDateLte) params['primary_release_date.lte'] = releaseDateLte
+  if (excludeMatureContent) {
+    params.certification_country = 'NL'
+    params['certification.lte'] = '12'
+  }
+  const data = await tmdbFetch('/discover/movie', params)
+  return data.results
+}
+
 export async function fetchMovieDetails(tmdbId) {
   const [details, credits] = await Promise.all([
     tmdbFetch(`/movie/${tmdbId}`),
